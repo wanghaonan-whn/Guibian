@@ -8,7 +8,7 @@ def split_exposure(image: np.ndarray):
     奇数行：低曝光
     """
 
-    high = image[0::2]
-    low = image[1::2]
+    low = image[0::2]
+    high = image[1::2]
 
     return high, low

@@ -5,17 +5,12 @@ from fastapi import FastAPI, UploadFile, File
 import uvicorn
 
 app = FastAPI()
-
-# ZeroMQ PUSH
-context = zmq.Context()
-socket = context.socket(zmq.PUSH)
-
-# worker 接收地址
-socket.bind("tcp://*:5555")
+socket = None
 
 
 @app.post("/upload")
 async def upload_image(file: UploadFile = File(...)):
+    global socket
 
     data = await file.read()
 
@@ -34,5 +29,14 @@ async def upload_image(file: UploadFile = File(...)):
     return {"code": 0, "msg": "received"}
 
 
-if __name__ == "__main__":
+def run_receiver():
+    global socket
+
+    # ZeroMQ PUSH
+    context = zmq.Context()
+    socket = context.socket(zmq.PUSH)
+
+    # worker 接收地址
+    socket.bind("tcp://*:5555")
+
     uvicorn.run(app, host="0.0.0.0", port=8000)

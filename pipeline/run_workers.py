@@ -1,11 +1,15 @@
+import toml
 from multiprocessing import Process
-from worker import worker
+from pipeline.worker import worker
 
 
-def run():
+def run_workers(config_path):
     workers = []
-    for _ in range(9):   # 4个处理进程
-        p = Process(target=worker)
+    config = toml.load(config_path)
+    process_num = config["model"]["device"]
+
+    for rank, device_id in enumerate(process_num):
+        p = Process(target=worker, args=(config_path, device_id, rank))
         p.start()
         workers.append(p)
 
