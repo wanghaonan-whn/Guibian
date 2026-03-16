@@ -1,4 +1,5 @@
 import argparse
+import os
 import time
 from multiprocessing import Process
 from pipeline.run_workers import run_workers
@@ -7,14 +8,15 @@ from service.receiver import run_receiver
 
 def parse_args():
     parser = argparse.ArgumentParser(prog="main.py")
-    parser.add_argument("--config-path", default="./conf/config_whn.yaml", type=str)
+    parser.add_argument("--config-path", default="config/config.toml", type=str)
     return parser.parse_args()
 
 
 def main():
     # 启动 worker
     args = parse_args()
-    config_path = args.config_path
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    config_path = os.path.join(base_dir, args.config_path)
     worker_process = Process(target=run_workers, args=(config_path,))
     worker_process.start()
 

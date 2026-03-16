@@ -21,10 +21,10 @@ def worker(config_path: str, device_id: str, rank: int) -> None:
     socket = context.socket(zmq.PULL)
     socket.connect("tcp://localhost:5555")
 
-    logger.info("Worker started, waiting for images...")
+    logger.info(f"Worker {rank} started, waiting for images...")
 
     # select device
-    device_type = DEVICE_TYPE_MAP[config["device_type"]]
+    device_type = DEVICE_TYPE_MAP[config["model"]["device_type"]]
     device_manager = DeviceManager(
         device_config=device_id,
         backend=device_type
@@ -56,7 +56,7 @@ def worker(config_path: str, device_id: str, rank: int) -> None:
         logger.warning("[warmup] failed: %s", e)
 
     # init camera
-    flip_cams = [x.strip() for x in config["camera"]["flip_cams"].split(",") if x.strip()]
+    flip_cams = [x for x in config["camera"]["flip_cams"]]
 
     while True:
         image = socket.recv_pyobj()

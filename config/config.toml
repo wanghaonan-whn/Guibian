@@ -3,7 +3,7 @@ EPS = 1e-8
 is_guided = true
 checkpoint = "weights/weight.pth"
 device_type = "nvidia"
-device = [0, 2, 4, 6, 8, 10, 12]
+device = [0]
 warmup_shapes = [[2000, 2048], [2000, 2336], [2000, 1760], [2000, 2112], [2000, 1856]]
 
 
