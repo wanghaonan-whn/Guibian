@@ -9,3 +9,6 @@ warmup_shapes = [[2000, 2048], [2000, 2336], [2000, 1760], [2000, 2112], [2000, 
 
 [camera]
 flip_cams = ["12", "13"]
+
+[path]
+results_path = "/mnt/8T/高低曝光/guibian/result"

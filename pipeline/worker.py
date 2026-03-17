@@ -1,12 +1,16 @@
-from typing import List, Tuple
+import os
 
+import cv2
+import numpy as np
 import torch
 import zmq
 import toml
+from PIL import Image
 from loguru import logger
+
+from mef.datasets import preprocess_mefnet, YCbCrToRGB, tensor_to_uint8_hwc
 from mef.model import E2EMEF
 from mef.select_device import DeviceManager
-from pipeline.splitter import split_exposure
 from pipeline.warmup import warmup_shapes_u8
 
 DEVICE_TYPE_MAP = {
@@ -17,7 +21,7 @@ DEVICE_TYPE_MAP = {
 
 def worker(config_path: str, device_id: str, rank: int) -> None:
     config = toml.load(config_path)
-    context = zmq.Context()
+    context = zmq.Context().instance()
     socket = context.socket(zmq.PULL)
     socket.connect("tcp://localhost:5555")
 
@@ -59,5 +63,19 @@ def worker(config_path: str, device_id: str, rank: int) -> None:
     flip_cams = [x for x in config["camera"]["flip_cams"]]
 
     while True:
-        image = socket.recv_pyobj()
-        high, low = split_exposure(image)
+        message = socket.recv_pyobj()
+
+        data = message["data"]
+        image = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_GRAYSCALE)
+        path = message["path"]
+
+        I_he, I_le, Cb_f, Cr_f = preprocess_mefnet(image)
+
+        O_he, W_he = model(I_le, I_he)
+        O_hr_RGB = YCbCrToRGB()(torch.cat((O_he.detach().cpu(), Cb_f.detach().cpu(), Cr_f.detach().cpu()), dim=1))
+        t = O_hr_RGB[0].contiguous()
+        hwc = tensor_to_uint8_hwc(t)
+
+        out_path = os.path.join(config["path"]["results_path"], path)
+        os.makedirs(os.path.dirname(out_path), exist_ok=True)
+        Image.fromarray(hwc).save(out_path, format="JPEG", compress_level=95)

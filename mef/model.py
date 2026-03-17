@@ -78,7 +78,7 @@ class E2EMEF(nn.Module):
         )
 
         w_hr = torch.abs(w_hr)
-        w_hr = (w_hr + self.config.EPS) / torch.sum((w_hr + self.config.EPS), dim=0)
+        w_hr = (w_hr + self.config["model"]["EPS"]) / torch.sum((w_hr + self.config["model"]["EPS"]), dim=0)
 
         o_hr = torch.sum(w_hr * x_hr, dim=0, keepdim=True).clamp(0, 1)
         return o_hr, w_hr
