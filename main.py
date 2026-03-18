@@ -13,17 +13,14 @@ def parse_args():
 
 
 def main():
-    # 启动 worker
     args = parse_args()
     base_dir = os.path.dirname(os.path.abspath(__file__))
     config_path = os.path.join(base_dir, args.config_path)
     worker_process = Process(target=run_workers, args=(config_path,))
     worker_process.start()
 
-    # 等待 worker 启动
     time.sleep(1)
 
-    # 启动 receiver
     receiver_process = Process(target=run_receiver)
     receiver_process.start()
 

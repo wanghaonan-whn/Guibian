@@ -1,5 +1,4 @@
 import os
-
 import zmq
 import uvicorn
 import toml
@@ -9,6 +8,7 @@ from pathlib import Path
 app = FastAPI()
 project_root = os.path.dirname(os.path.dirname(__file__))
 config = toml.load(os.path.join(project_root, "config/config.toml"))
+
 
 @app.post("/upload")
 async def upload_image(request: Request, file: UploadFile = File(...), path: str = Form(...)):
@@ -21,12 +21,15 @@ async def upload_image(request: Request, file: UploadFile = File(...), path: str
     suffix = Path(path).suffix.lower()
     if suffix == ".txt":
         txt_save_path = Path(os.path.join(config["path"]["results_path"], path))
+        txt_save_scale_path = Path(os.path.join(config["path"]["results_scale_path"], path))
         txt_save_path.parent.mkdir(parents=True, exist_ok=True)
+        txt_save_scale_path.parent.mkdir(parents=True, exist_ok=True)
         with open(txt_save_path, "wb") as f:
+            f.write(data)
+        with open(txt_save_scale_path, "wb") as f:
             f.write(data)
         return {"code": 0, "msg": "txt saved"}
 
-    # image send to ZMQ
     msg = {"data": data, "path": path}
     socket.send_pyobj(msg)
 
@@ -34,11 +37,10 @@ async def upload_image(request: Request, file: UploadFile = File(...), path: str
 
 
 def run_receiver():
-    # ZeroMQ PUSH
     context = zmq.Context()
     socket = context.socket(zmq.PUSH)
 
-    # worker 接收地址
+    socket.setsockopt(zmq.SNDHWM, 5000)
     socket.bind("tcp://*:5555")
     app.state.socket = socket
     app.state.zmq_context = context

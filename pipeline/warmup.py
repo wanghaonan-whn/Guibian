@@ -13,9 +13,10 @@ def warmup_shapes_u8(
         low_size: int,
         iters: int,
         device_manager: DeviceManager,
+        rank: int,
 ):
     model.eval()
-    logger.debug("[warmup] begin shapes=%s iters=%d", shapes_hw, iters)
+    logger.debug(f"[warmup] begin shapes={shapes_hw} iters={iters}")
 
     for (H, W) in shapes_hw:
         x_hr_u8 = torch.zeros((2, 1, H, W), dtype=torch.uint8, device=device)
@@ -32,9 +33,6 @@ def warmup_shapes_u8(
             u8 = (y.clamp(0, 1) * 255.0).to(torch.uint8)
             _ = u8[0, 0].contiguous().cpu().numpy()
             if i == 0:
-                logger.info("[warmup] shape=(%d,%d) lr=(%d,%d) ok", H, W, lh, lw)
+                logger.debug(f"[warmup] shape=({H, W}) lr=({lh, lw}) ok")
 
-        device_type = device_manager._init_backend()
-        device_type.get_torch_npu()
-
-    logger.info("[warmup] done")
+    logger.debug("[warmup] done")

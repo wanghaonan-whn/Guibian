@@ -5,10 +5,15 @@ checkpoint = "weights/weight.pth"
 device_type = "nvidia"
 device = [0]
 warmup_shapes = [[2000, 2048], [2000, 2336], [2000, 1760], [2000, 2112], [2000, 1856]]
+low_size = 128
 
+[scale]
+target_height = 819
+target_height_16 = 1280
 
 [camera]
 flip_cams = ["12", "13"]
 
 [path]
 results_path = "/mnt/8T/高低曝光/guibian/result"
+results_scale_path = "/mnt/8T/高低曝光/guibian/result_scale"

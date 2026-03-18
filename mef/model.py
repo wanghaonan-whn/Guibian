@@ -94,7 +94,7 @@ class E2EMEF(nn.Module):
             new_state[k] = v
 
         self.load_state_dict(new_state, strict=False)
-        logger.info(f"[*] loaded checkpoint: {ckpt_path}", )
+        logger.info(f"[weights] loaded checkpoint: {ckpt_path}", )
 
     def build_lr_net(self, norm=AdaptiveNorm, layer=5, width=24):
         layers = [

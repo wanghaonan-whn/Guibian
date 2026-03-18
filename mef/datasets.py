@@ -1,6 +1,9 @@
+import cv2
 import numpy as np
 import torch
 import collections
+
+from torch import Tensor
 from torchvision import transforms
 from PIL import Image
 from torch.autograd import Variable
@@ -128,3 +131,12 @@ def tensor_to_uint8_hwc(img_chw_float_0_1: torch.Tensor) -> np.ndarray:
     """
     img = img_chw_float_0_1.clamp(0, 1).mul(255).byte()
     return img.permute(1, 2, 0).contiguous().numpy()
+
+
+def resize_by_height(img: np.ndarray, target_height: int) -> np.ndarray:
+    h, w = img.shape[:2]  # 原始高宽
+    scale = target_height / h
+    new_w = int(w * scale)
+
+    resized = cv2.resize(img, (new_w, target_height))
+    return resized
