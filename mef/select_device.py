@@ -33,10 +33,10 @@ class Nvidia:
         self.device_config = device_config
 
     @staticmethod
-    def get_device_list(config: dict) -> list[str]:
+    def get_device_list(config) -> list[str]:
         return parse_device_list(config, "cuda")
 
-    def setup_device_gpu(self, rank: int) -> Tuple[torch.device, str]:
+    def setup_device(self, rank: int) -> Tuple[torch.device, str]:
         device_list = self.get_device_list(self.device_config)
         device_str = device_list[rank % len(device_list)]
 

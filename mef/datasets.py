@@ -82,7 +82,7 @@ class YCbCrToRGB(object):
              (img[:, 1, :, :] - 128 / 256.) * 1.772], dim=1)
 
 
-def preprocess_mefnet(image):
+def preprocess_mefnet(image, device):
     """ process image for mefnet format"""
 
     high, low = split_exposure(image)  # HxW
@@ -92,12 +92,12 @@ def preprocess_mefnet(image):
     image_seq.append(Image.fromarray(low).convert('RGB'))
 
     I_he = test_hr_transform(image_seq)
-    I_le = test_hr_transform(image_seq)
+    I_le = test_lr_transform(image_seq)
 
     I_he = torch.stack(I_he, 0).contiguous()
     I_le = torch.stack(I_le, 0).contiguous()
-    i_he = I_he.cuda(non_blocking=True)
-    i_le = I_le.cuda(non_blocking=True)
+    i_he = I_he.to(device, non_blocking=True)
+    i_le = I_le.to(device, non_blocking=True)
     i_he = torch.squeeze(i_he, dim=0)
     i_le = torch.squeeze(i_le, dim=0)
 

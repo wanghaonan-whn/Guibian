@@ -1,5 +1,4 @@
 import os
-
 import cv2
 import numpy as np
 import torch
@@ -32,15 +31,14 @@ def worker(config_path: str, device_id: str, rank: int) -> None:
     device_type = DEVICE_TYPE_MAP[config["model"]["device_type"]]
     device_manager = DeviceManager(device_config=device_id, backend=device_type)
 
-    if device_type == "gpu":
-        device, device_str = device_manager.init_backend().setup_device_gpu(config["model"]["device"][rank])
-    else:
-        device, device_str = device_manager.init_backend().setup_device_npu(config["model"]["device"][rank])
+    device, device_str = device_manager.init_backend().setup_device(config["model"]["device"][rank])
+
     logger.info(f"Worker {rank} using device {device_str}")
 
     # init model
     model = E2EMEF(config=config, is_guided=config["model"]["is_guided"])
     model.load_checkpoint(config["model"]["checkpoint"])
+    print(device)
     model = model.to(device)
     model.eval()
     torch.set_grad_enabled(False)
@@ -72,7 +70,7 @@ def worker(config_path: str, device_id: str, rank: int) -> None:
         image = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_GRAYSCALE)
         path = message["path"]
 
-        I_he, I_le, Cb_f, Cr_f = preprocess_mefnet(image)
+        I_he, I_le, Cb_f, Cr_f = preprocess_mefnet(image, device)
 
         O_he, W_he = model(I_le, I_he)
         O_hr_RGB = YCbCrToRGB()(torch.cat((O_he.detach().cpu(), Cb_f.detach().cpu(), Cr_f.detach().cpu()), dim=1))
