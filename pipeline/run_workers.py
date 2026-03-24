@@ -1,17 +1,18 @@
 import time
-
 import toml
 from multiprocessing import Process
 from pipeline.worker import worker
 from loguru import logger
+
 
 def run_workers(config_path):
     workers = []
     config = toml.load(config_path)
     process_num = config["worker"]["process"]
     start_time = time.time()
-    for rank, device_id in enumerate(process_num):
-        p = Process(target=worker, args=(config_path, device_id, rank))
+    device_ids = config["model"]["device"]
+    for rank, _ in enumerate(range(process_num)):
+        p = Process(target=worker, args=(config_path, device_ids, rank))
         p.start()
         workers.append(p)
 

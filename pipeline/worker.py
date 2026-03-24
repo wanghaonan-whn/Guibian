@@ -31,14 +31,13 @@ def worker(config_path: str, device_id: str, rank: int) -> None:
     device_type = DEVICE_TYPE_MAP[config["model"]["device_type"]]
     device_manager = DeviceManager(device_config=device_id, backend=device_type)
 
-    device, device_str = device_manager.init_backend().setup_device(config["model"]["device"][rank])
-
+    device, device_str = device_manager.init_backend().setup_device(rank)
     logger.info(f"Worker {rank} using device {device_str}")
 
     # init model
     model = E2EMEF(config=config, is_guided=config["model"]["is_guided"])
     model.load_checkpoint(config["model"]["checkpoint"])
-    print(device)
+    # print(device)
     model = model.to(device)
     model.eval()
     torch.set_grad_enabled(False)
@@ -61,7 +60,7 @@ def worker(config_path: str, device_id: str, rank: int) -> None:
         logger.warning(f"[warmup] failed: {e}")
 
     # init camera
-    flip_cams = [x for x in config["camera"]["flip_cams"]]
+    flip_cams = [str(x) for x in config["camera"]["flip_cams"]]
 
     while True:
         message = socket.recv_pyobj()
@@ -77,10 +76,14 @@ def worker(config_path: str, device_id: str, rank: int) -> None:
         t = O_hr_RGB[0].contiguous()
         hwc = tensor_to_uint8_hwc(t)
 
+        channel = path.split("/")[-2]
+        if str(channel) in flip_cams:
+            hwc = cv2.flip(hwc, 0)
+
         out_path = os.path.join(config["path"]["results_path"], path)
         os.makedirs(os.path.dirname(out_path), exist_ok=True)
         Image.fromarray(hwc).save(out_path, format="JPEG", compress_level=95)
-        logger.success(f"{path} saved")
+        logger.success(f"{path} saved， pid: {rank}")
 
         out_scale_path = os.path.join(config["path"]["results_scale_path"], path)
         os.makedirs(os.path.dirname(out_scale_path), exist_ok=True)

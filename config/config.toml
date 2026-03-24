@@ -2,8 +2,8 @@
 EPS = 1e-8
 is_guided = true
 checkpoint = "weights/weight.pth"
-device_type = "ascend"
-device = [0, 1, 2, 3, 4, 5, 6]
+device_type = "nvidia"
+device = [0]
 warmup_shapes = [[2000, 2048], [2000, 2336], [2000, 1760], [2000, 2112], [2000, 1856]]
 low_size = 128
 
@@ -12,11 +12,11 @@ target_height = 819
 target_height_16 = 1280
 
 [camera]
-flip_cams = ["12", "13"]
+flip_cams = ["12", "13", "16"]
 
 [path]
-results_path = "/root/guibian/result"
-results_scale_path = "/root/guibian/result_scale"
+results_path = "/mnt/8T/高低曝光/guibian/result"
+results_scale_path = "/mnt/8T/高低曝光/guibian/result_scale"
 
 [worker]
-process = 16
+process = 8

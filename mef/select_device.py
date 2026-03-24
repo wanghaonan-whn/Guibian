@@ -39,7 +39,7 @@ class Nvidia:
     def setup_device(self, rank: int) -> Tuple[torch.device, str]:
         device_list = self.get_device_list(self.device_config)
         device_str = device_list[rank % len(device_list)]
-
+        print(device_list)
         return torch.device(device_str), device_str
 
 
