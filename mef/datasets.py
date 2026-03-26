@@ -1,142 +1,81 @@
 import cv2
 import numpy as np
 import torch
-import collections
-
-from torch import Tensor
-from torchvision import transforms
-from PIL import Image
-from torch.autograd import Variable
 
 EPS = 1e-8
 high_size = 2048
 low_size = 128
-RANDOM_RESOLUTIONS = [512, 768, 1024, 1280, 1536]
 
 
-class BatchTestResolution(object):
-    def __init__(self, size: int = None, interpolation=Image.BILINEAR):
-        assert isinstance(size, int) or (isinstance(size, collections.Iterable) and len(size) == 2) or (size is None)
-        self.size = size
-        self.interpolation = interpolation
-
-    def __call__(self, imgs: np.ndarray):
-        h, w = imgs[0].size
-        if h > self.size and w > self.size:
-            return [transforms.Resize(self.size, self.interpolation)(img) for img in imgs]
-        else:
-            return imgs
+def resize_min_edge_if_both_gt(img: np.ndarray, size: int, interp=cv2.INTER_LINEAR) -> np.ndarray:
+    h, w = img.shape[:2]
+    if h > size and w > size:
+        scale = size / float(min(h, w))
+        nh = max(1, int(round(h * scale)))
+        nw = max(1, int(round(w * scale)))
+        return cv2.resize(img, (nw, nh), interpolation=interp)
+    return img
 
 
-class BatchToTensor(object):
-    def __call__(self, imgs):
-        return [transforms.ToTensor()(img) for img in imgs]
-
-
-class BatchRGBToYCbCr(object):
-    def __call__(self, imgs):
-        return [torch.stack((0. / 256. + img[0, :, :] * 0.299000 + img[1, :, :] * 0.587000 + img[2, :, :] * 0.114000,
-                             128. / 256. - img[0, :, :] * 0.168736 - img[1, :, :] * 0.331264 + img[2, :, :] * 0.500000,
-                             128. / 256. + img[0, :, :] * 0.500000 - img[1, :, :] * 0.418688 - img[2, :, :] * 0.081312),
-                            dim=0) for img in imgs]
-
-
-class BatchRandomResolution(object):
-    def __init__(self, size: int = None, interpolation=Image.BILINEAR):
-
-        assert isinstance(size, int) or (isinstance(size, collections.Iterable) and len(size) == 2) or (size is None)
-        self.size = size
-        self.interpolation = interpolation
-
-    def __call__(self, imgs):
-        if self.size is None:
-            h, w = imgs[0].size
-            max_idx = 0
-            for i in range(len(RANDOM_RESOLUTIONS)):
-                if h > RANDOM_RESOLUTIONS[i] and w > RANDOM_RESOLUTIONS[i]:
-                    max_idx += 1
-            idx = np.random.randint(max_idx)
-            self.size = RANDOM_RESOLUTIONS[idx]
-        return [transforms.Resize(self.size, self.interpolation)(img) for img in imgs]
-
-
-test_hr_transform = transforms.Compose([
-    BatchTestResolution(high_size, interpolation=2),
-    BatchToTensor(),
-    BatchRGBToYCbCr()
-])
-
-test_lr_transform = transforms.Compose([
-    BatchRandomResolution(low_size, interpolation=2),
-    BatchToTensor(),
-    BatchRGBToYCbCr()
-])
-
-
-class YCbCrToRGB(object):
-    def __call__(self, img):
-        return torch.stack(
-            [img[:, 0, :, :] + (img[:, 2, :, :] - 128 / 256.) * 1.402,
-             img[:, 0, :, :] - (img[:, 1, :, :] - 128 / 256.) * 0.344136 -
-             (img[:, 2, :, :] - 128 / 256.) * 0.714136, img[:, 0, :, :] +
-             (img[:, 1, :, :] - 128 / 256.) * 1.772], dim=1)
-
-
-def preprocess_mefnet(image, device):
-    """ process image for mefnet format"""
-
-    high, low = split_exposure(image)  # HxW
-
-    image_seq = []
-    image_seq.append(Image.fromarray(high).convert('RGB'))
-    image_seq.append(Image.fromarray(low).convert('RGB'))
-
-    I_he = test_hr_transform(image_seq)
-    I_le = test_lr_transform(image_seq)
-
-    I_he = torch.stack(I_he, 0).contiguous()
-    I_le = torch.stack(I_le, 0).contiguous()
-    i_he = I_he.to(device, non_blocking=True)
-    i_le = I_le.to(device, non_blocking=True)
-    i_he = torch.squeeze(i_he, dim=0)
-    i_le = torch.squeeze(i_le, dim=0)
-
-    Y_he = i_he[:, 0, :, :].unsqueeze(1)  # 高曝图片的亮度
-    Cb_he = i_he[:, 1, :, :].unsqueeze(1)
-    Cr_he = i_he[:, 2, :, :].unsqueeze(1)
-
-    Wb = (torch.abs(Cb_he - 0.5) + EPS) / torch.sum(torch.abs(Cb_he - 0.5) + EPS, dim=0)
-    Wr = (torch.abs(Cr_he - 0.5) + EPS) / torch.sum(torch.abs(Cr_he - 0.5) + EPS, dim=0)
-    Cb_f = torch.sum(Wb * Cb_he, dim=0, keepdim=True).clamp(0, 1)
-    Cr_f = torch.sum(Wr * Cr_he, dim=0, keepdim=True).clamp(0, 1)
-
-    Y_le = i_le[:, 0, :, :].unsqueeze(1)
-    I_he = Variable(Y_he)
-    I_le = Variable(Y_le)
-    return I_he, I_le, Cb_f, Cr_f
+def resize_min_edge_always(img: np.ndarray, size: int, interp=cv2.INTER_LINEAR) -> np.ndarray:
+    h, w = img.shape[:2]
+    scale = size / float(min(h, w))
+    nh = max(1, int(round(h * scale)))
+    nw = max(1, int(round(w * scale)))
+    return cv2.resize(img, (nw, nh), interpolation=interp)
 
 
 def split_exposure(image: np.ndarray):
-    """ 线阵相机高低曝光拆分 """
+    """Line-scan camera high/low exposure split."""
     low = image[0::2]
     high = image[1::2]
-
     return high, low
 
 
-def tensor_to_uint8_hwc(img_chw_float_0_1: torch.Tensor) -> np.ndarray:
+def to_1chw_u8(img: np.ndarray) -> torch.Tensor:
+    if img.dtype != np.uint8:
+        img = img.astype(np.uint8, copy=False)
+    return torch.from_numpy(np.ascontiguousarray(img)).unsqueeze(0)
+
+
+def preprocess_mefnet(image: np.ndarray) -> tuple[torch.Tensor, torch.Tensor]:
+    """Build uint8 grayscale tensors on CPU; caller moves/casts on device."""
+    high, low = split_exposure(image)
+
+    high_hr = resize_min_edge_if_both_gt(high, high_size, interp=cv2.INTER_LINEAR)
+    low_hr = resize_min_edge_if_both_gt(low, high_size, interp=cv2.INTER_LINEAR)
+    high_lr = resize_min_edge_always(high, low_size, interp=cv2.INTER_LINEAR)
+    low_lr = resize_min_edge_always(low, low_size, interp=cv2.INTER_LINEAR)
+
+    i_he_u8 = torch.stack([to_1chw_u8(high_hr), to_1chw_u8(low_hr)], 0).contiguous()
+    i_le_u8 = torch.stack([to_1chw_u8(high_lr), to_1chw_u8(low_lr)], 0).contiguous()
+    return i_he_u8, i_le_u8
+
+
+def tensor_to_uint8_hwc(img: torch.Tensor, expand_gray_to_rgb: bool = True) -> np.ndarray:
     """
-    img_chw_float_0_1: CPU 上的 [3,H,W] float tensor, 值域 0~1
-    return: HWC uint8 ndarray
+    img: [1,H,W] or [3,H,W] tensor on CPU or device.
+    If the tensor is float, quantization runs on the current device before copying to CPU.
     """
-    img = img_chw_float_0_1.clamp(0, 1).mul(255).byte()
-    return img.permute(1, 2, 0).contiguous().numpy()
+    if img.ndim != 3:
+        raise ValueError(f"Expected a 3D tensor, got shape={tuple(img.shape)}")
+
+    if img.dtype != torch.uint8:
+        img = img.clamp(0, 1).mul(255).to(torch.uint8)
+
+    if img.shape[0] == 1:
+        if expand_gray_to_rgb:
+            img = img.expand(3, *img.shape[1:])
+        else:
+            return img[0].contiguous().cpu().numpy()
+    elif img.shape[0] != 3:
+        raise ValueError(f"Expected 1 or 3 channels, got shape={tuple(img.shape)}")
+
+    return img.permute(1, 2, 0).contiguous().cpu().numpy()
 
 
 def resize_by_height(img: np.ndarray, target_height: int) -> np.ndarray:
-    h, w = img.shape[:2]  # 原始高宽
+    h, w = img.shape[:2]
     scale = target_height / h
     new_w = int(w * scale)
-
-    resized = cv2.resize(img, (new_w, target_height))
-    return resized
+    return cv2.resize(img, (new_w, target_height))

@@ -1,5 +1,5 @@
 import torch
-from typing import Tuple
+from typing import Tuple, Optional
 from collections.abc import Sequence
 
 from traits.trait_types import self
@@ -69,7 +69,7 @@ class Ascend:
 
 
 class DeviceManager:
-    def __init__(self, device_config=None, backend: str | None = None):
+    def __init__(self, device_config=None, backend: Optional[str] = None) -> None:
         self.device_config = device_config
         self.backend = backend
         self.backend_impl = self.init_backend()

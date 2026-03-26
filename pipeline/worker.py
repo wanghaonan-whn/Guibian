@@ -1,4 +1,5 @@
 import os
+
 import cv2
 import numpy as np
 import torch
@@ -7,7 +8,7 @@ import toml
 from PIL import Image
 from loguru import logger
 
-from mef.datasets import preprocess_mefnet, YCbCrToRGB, tensor_to_uint8_hwc, resize_by_height
+from mef.datasets import preprocess_mefnet, tensor_to_uint8_hwc, resize_by_height
 from mef.model import E2EMEF
 from mef.select_device import DeviceManager
 from pipeline.warmup import warmup_shapes_u8
@@ -18,8 +19,48 @@ DEVICE_TYPE_MAP = {
 }
 
 
-def worker(config_path: str, device_id: str, rank: int) -> None:
+
+def save_outputs(config: dict, path: str, hwc: np.ndarray) -> None:
+    channel = path.split("/")[-2]
+
+    out_path = os.path.join(config["path"]["results_path"], path)
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    Image.fromarray(hwc).save(out_path, format="JPEG", compress_level=95)
+
+    if channel == "16":
+        image_scale = resize_by_height(hwc, config["scale"]["target_height_16"])
+    else:
+        image_scale = resize_by_height(hwc, config["scale"]["target_height"])
+
+    out_scale_path = os.path.join(config["path"]["results_scale_path"], path)
+    os.makedirs(os.path.dirname(out_scale_path), exist_ok=True)
+    Image.fromarray(image_scale).save(out_scale_path, format="JPEG", quality=95)
+
+
+
+def save_worker(config_path: str, save_queue, rank: int) -> None:
     config = toml.load(config_path)
+    saved_count = 0
+    logger.info(f"Save worker {rank} started, waiting for images...")
+
+    while True:
+        message = save_queue.get()
+        if message is None:
+            logger.info(f"Save worker {rank} stopped")
+            return
+
+        path = message["path"]
+        hwc = message["hwc"]
+        save_outputs(config, path, hwc)
+        saved_count += 1
+        if saved_count % 100 == 0:
+            logger.info(f"Save worker {rank} saved {saved_count} images")
+
+
+
+def worker(config_path: str, device_id: str, rank: int, save_queue) -> None:
+    config = toml.load(config_path)
+    has_started_work = False
 
     context = zmq.Context().instance()
     socket = context.socket(zmq.PULL)
@@ -37,7 +78,6 @@ def worker(config_path: str, device_id: str, rank: int) -> None:
     # init model
     model = E2EMEF(config=config, is_guided=config["model"]["is_guided"])
     model.load_checkpoint(config["model"]["checkpoint"])
-    # print(device)
     model = model.to(device)
     model.eval()
     torch.set_grad_enabled(False)
@@ -56,40 +96,34 @@ def worker(config_path: str, device_id: str, rank: int) -> None:
             device_manager=device_manager,
             rank=rank,
         )
+        logger.success(f"Worker {rank} warmup finished")
     except Exception as e:
         logger.warning(f"[warmup] failed: {e}")
 
-    # init camera
     flip_cams = [str(x) for x in config["camera"]["flip_cams"]]
 
     while True:
         message = socket.recv_pyobj()
-
-        data = message["data"]
-        image = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_GRAYSCALE)
+        if not has_started_work:
+            logger.info(f"Worker {rank} received first image, work started")
+            has_started_work = True
         path = message["path"]
+        data = message["data"]
 
-        I_he, I_le, Cb_f, Cr_f = preprocess_mefnet(image, device)
+        image = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_GRAYSCALE)
 
-        O_he, W_he = model(I_le, I_he)
-        O_hr_RGB = YCbCrToRGB()(torch.cat((O_he.detach().cpu(), Cb_f.detach().cpu(), Cr_f.detach().cpu()), dim=1))
-        t = O_hr_RGB[0].contiguous()
-        hwc = tensor_to_uint8_hwc(t)
+        I_he_u8, I_le_u8 = preprocess_mefnet(image)
+        I_he_u8 = I_he_u8.to(device, non_blocking=True)
+        I_le_u8 = I_le_u8.to(device, non_blocking=True)
+        I_he = I_he_u8.to(torch.float32).div_(255.0)
+        I_le = I_le_u8.to(torch.float32).div_(255.0)
+
+        O_he, _ = model(I_le, I_he)
+
+        hwc = tensor_to_uint8_hwc(O_he[0].detach())
 
         channel = path.split("/")[-2]
         if str(channel) in flip_cams:
             hwc = cv2.flip(hwc, 0)
 
-        out_path = os.path.join(config["path"]["results_path"], path)
-        os.makedirs(os.path.dirname(out_path), exist_ok=True)
-        Image.fromarray(hwc).save(out_path, format="JPEG", compress_level=95)
-        logger.success(f"{path} saved， pid: {rank}")
-
-        out_scale_path = os.path.join(config["path"]["results_scale_path"], path)
-        os.makedirs(os.path.dirname(out_scale_path), exist_ok=True)
-        channel = path.split("/")[-2]
-        if channel == "16":
-            image_scale = resize_by_height(hwc, config["scale"]["target_height_16"])
-        else:
-            image_scale = resize_by_height(hwc, config["scale"]["target_height"])
-        Image.fromarray(image_scale).save(out_scale_path, format="JPEG", quality=95)
+        save_queue.put({"path": path, "hwc": hwc})

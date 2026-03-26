@@ -20,3 +20,7 @@ results_scale_path = "/mnt/8T/高低曝光/guibian/result_scale"
 
 [worker]
 process = 8
+
+[save_worker]
+process = 2
+queue_size = 256
